@@ -1,0 +1,112 @@
+const {
+    CommandInteraction,
+    ActionRowBuilder,
+    ButtonBuilder,
+    Message,
+    ButtonStyle,
+    ComponentType
+} = require("discord.js");
+const DisBot = require("../DisBot");
+
+module.exports = class Timestamp {
+    /**
+     * @param {CommandInteraction} int 
+     * @param {number} time
+     */
+    constructor(int, time) {
+        this.int = int;
+        /**
+         * @type {DisBot}
+         */
+        this.client = int.client;
+        this.date = new Date(time || Date.now());
+        this.ended = false;
+        this.reply = null;
+    }
+    getMs() {
+        return Math.floor(this.date.getTime());
+    }
+    getEmbed() {
+        let formats = ["d", "f", "t", "D", "F", "R", "T"].map(f => `<t:_:${f}>`);
+        let fixed = formats.join('\n').replaceAll('_', this.getMs()).split('\n')
+        return this.client.createEmbed(this.int.guild)
+            .setTitle(this.getMs().toString())
+            .addFields(
+                { name: 'From', value: fixed.map(e => `\`${e}\``).join('\n'), inline: true },
+                { name: 'To', value: fixed.join('\n'), inline: true }
+            );
+    }
+    getOpts(disabled){
+        return {
+            embeds: [this.getEmbed()],
+            components: this.getRows(disabled)
+        }
+    }
+    async start() {
+        try {
+            let opts = {
+                embeds: [this.getEmbed()],
+                components: this.getRows()
+            }
+            /**
+             * @type {Message}
+             */
+            this.reply = await this.int.reply({ ...opts, fetchReply: true }).catch(console.error);
+            if (!this.reply) return;
+
+            this.collector = this.reply.createMessageComponentCollector({
+                componentType: ComponentType.Button,
+                filter: () => true,
+                time: 1000 * 60 * 5
+            });
+
+            this.collector.on('collect', async i => {
+                try {
+                    if (i.customId === "reset") {
+                        this.date = new Date(Date.now() / 1000)
+                    } else {
+                        this.date = new Date(this.date.getTime() + Number(i.customId) / 1000);
+                    }
+                    await i.update(this.getOpts());
+                } catch (err) {
+                    console.error(err)
+                }
+            })
+
+            this.collector.on('end', () => this.reply.edit(this.getOpts(true)).catch(_=>0))
+        } catch (err) { console.error(err.stack || err) };
+    }
+    getRows(disabled = false) {
+        let raws = [
+            [
+                { t: 31557600000, l: "+1 an" },
+                { t: 2629800000, l: "+1 mois" },
+                { t: 86400000, l: "+1 jour" },
+                { t: 3600000, l: "+1 heure" },
+                { t: 60000, l: "+1 minute" }
+            ],
+            [
+                { t: -31557600000, l: "-1 an" },
+                { t: -2629800000, l: "-1 mois" },
+                { t: -86400000, l: "-1 jour" },
+                { t: -3600000, l: "-1 heure" },
+                { t: -60000, l: "-1 minute" }
+            ],
+            [
+                { t: "reset", l: "Reset", e: "♻", s : "Success"}
+            ]
+        ]
+        let r = raws.map(e => new ActionRowBuilder()
+            .setComponents(
+                ...e.map(t => {
+                    let b = new ButtonBuilder()
+                        .setCustomId(t.t?.toString())
+                        .setStyle(ButtonStyle[t.s || "Secondary"])
+                        .setDisabled(disabled)
+                        .setLabel(t.l);
+                    if (t.e) b.setEmoji(t.e);
+                    return b;
+                })));
+        return r;
+    }
+}
