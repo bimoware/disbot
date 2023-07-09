@@ -1,4 +1,4 @@
-// --
+// .env file
 require('dotenv').config()
 // --
 const { ActivityType } = require('discord.js')
